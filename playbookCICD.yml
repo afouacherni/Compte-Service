@@ -12,7 +12,7 @@
     
     # POINT DE CORRECTION MAJEUR : 
     # Pointe vers l'interpréteur Python dans le nouvel environnement virtuel (venv)
-    ansible_python_interpreter: /var/lib/jenkins/workspace/ansible/venv/bin/python 
+    ansible_python_interpreter: /home/afwa/ansible-env/bin/python 
     
     namespace: jenkins
 
