@@ -1,62 +1,63 @@
 ---
-- name: Build and Deploy Docker Image to Kubernetes
+- name: Build, Push Docker Image and Deploy to Kubernetes
   hosts: localhost
   connection: local
-  
+
   vars:
     image_name: my-compte-service
     image_tag: v1
     dockerfile_path: './'
     docker_registry_username: afwacherni123
     docker_registry_password: 123456789
-    ansible_python_interpreter:  /usr/bin/python3
-  
+    ansible_python_interpreter: /usr/bin/python3
+    namespace: jenkins
+
   tasks:
-    - name: Install required Python libraries
+    - name: Ensure required Python packages are installed
       pip:
         name:
           - kubernetes
           - openshift
           - docker
+          - pyyaml
         state: present
-      
-    
+
     - name: Log in to Docker Hub
       community.general.docker_login:
         username: "{{ docker_registry_username }}"
         password: "{{ docker_registry_password }}"
         reauthorize: yes
-    
+
     - name: Build Docker image
       community.general.docker_image:
         build:
           path: "{{ dockerfile_path }}"
         name: "{{ docker_registry_username }}/{{ image_name }}"
+        tag: "{{ image_tag }}"
         source: build
         state: present
-        tag: "{{ image_tag }}"
-    
-    - name: Push the Docker image to Docker Hub
+
+    - name: Push Docker image to Docker Hub
       community.general.docker_image:
         name: "{{ docker_registry_username }}/{{ image_name }}"
         tag: "{{ image_tag }}"
         push: yes
         source: local
-    
-    - name: Pull Docker image (optional, for verification)
+
+    - name: Verify Docker image pull
       community.general.docker_image:
         name: "{{ docker_registry_username }}/{{ image_name }}"
         tag: "{{ image_tag }}"
         source: pull
-    
+
     - name: Apply Kubernetes Deployment
       kubernetes.core.k8s:
         state: present
-        namespace: jenkins
+        namespace: "{{ namespace }}"
         src: my-deployment.yaml
-    
+
     - name: Apply Kubernetes Service
       kubernetes.core.k8s:
         state: present
-        namespace: jenkins
+        namespace: "{{ namespace }}"
         src: service.yaml
