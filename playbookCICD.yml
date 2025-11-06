@@ -6,19 +6,20 @@
     image_name: my-compte-service
     image_tag: v1
     dockerfile_path: './'
-    # ATTENTION: Utilisez des secrets Jenkins pour les identifiants
+    # ATTENTION: Changez ces valeurs pour vos identifiants réels
     docker_registry_username: afwacherni123 
     docker_registry_password: 123456789
-    ansible_python_interpreter: /usr/bin/python3 
+    
+    # POINT DE CORRECTION MAJEUR : 
+    # Pointe vers l'interpréteur Python dans le nouvel environnement virtuel (venv)
+    ansible_python_interpreter: /var/lib/jenkins/workspace/ansible/venv/bin/python 
+    
     namespace: jenkins
 
   tasks:
-    # Tâche RETIRÉE :
-    # - name: Ensure required Python packages are installed
-    #   pip:
-    #     name: [...]
-    #     state: present
-    #     executable: "{{ ansible_python_interpreter }}"
+    # Tâche 'pip' (Ensure required Python packages are installed) RETIRÉE.
+    # Les packages (kubernetes, openshift, etc.) doivent être installés manuellement
+    # dans le venv avant l'exécution du pipeline.
 
     - name: Log in to Docker Hub
       community.general.docker_login:
@@ -42,7 +43,7 @@
         push: yes
         source: local
 
-    - name: Verify Docker image pull (optional)
+    - name: Verify Docker image pull (optional, for verification)
       community.general.docker_image:
         name: "{{ docker_registry_username }}/{{ image_name }}"
         tag: "{{ image_tag }}"
