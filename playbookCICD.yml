@@ -1,4 +1,76 @@
----
+- name: Build, Push Docker Image and Deploy to Kubernetes
+  hosts: localhost
+  connection: local
+
+  vars:
+    image_name: my-compte-service
+    image_tag: v1
+    dockerfile_path: './'
+    # ATTENTION: Remplacez par vos vrais identifiants et utilisez des secrets Jenkins !
+    docker_registry_username: afwacherni123 
+    docker_registry_password: 123456789
+    # Assurez-vous que ce chemin est correct sur votre agent Jenkins
+    ansible_python_interpreter: /usr/bin/python3 
+    namespace: jenkins
+
+  tasks:
+    - name: Ensure required Python packages are installed
+      pip:
+        name:
+          - kubernetes
+          - openshift
+          - docker
+          - pyyaml
+        state: present
+        # FIX: Assure l'installation des packages dans le bon environnement Python
+        executable: "{{ ansible_python_interpreter }}" 
+      tags: install_deps
+
+    - name: Log in to Docker Hub
+      community.general.docker_login:
+        username: "{{ docker_registry_username }}"
+        password: "{{ docker_registry_password }}"
+        reauthorize: yes
+      tags: docker_login
+
+    - name: Build Docker image
+      community.general.docker_image:
+        build:
+          path: "{{ dockerfile_path }}"
+        name: "{{ docker_registry_username }}/{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: build
+        state: present
+      tags: docker_build
+
+    - name: Push Docker image to Docker Hub
+      community.general.docker_image:
+        name: "{{ docker_registry_username }}/{{ image_name }}"
+        tag: "{{ image_tag }}"
+        push: yes
+        source: local
+      tags: docker_push
+
+    - name: Verify Docker image pull (optional)
+      community.general.docker_image:
+        name: "{{ docker_registry_username }}/{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+      tags: docker_pull
+
+    - name: Apply Kubernetes Deployment
+      kubernetes.core.k8s:
+        state: present
+        namespace: "{{ namespace }}"
+        src: my-deployment.yaml
+      tags: k8s_deploy
+
+    - name: Apply Kubernetes Service
+      kubernetes.core.k8s:
+        state: present
+        namespace: "{{ namespace }}"
+        src: service.yaml
+      tags: k8s_service---
 - name: Build, Push Docker Image and Deploy to Kubernetes
   hosts: localhost
   connection: local
