@@ -9,7 +9,7 @@
     dockerfile_path: './'
     docker_registry_username: afwacherni123
     docker_registry_password: 123456789
-    ansible_python_interpreter: /usr/bin/python3
+     ansible_python_interpreter: /home/afwa/.local/bin/python3
   
   tasks:
     - name: Install required Python libraries
