@@ -1,22 +1,21 @@
 ---
 - name: Build and Deploy Docker Image to Kubernetes
-  hosts: localhost  # or your build/deployment server
+  hosts: localhost
   connection: local
-
   vars:
     image_name: my-compte-service
     image_tag: v1
     dockerfile_path: ./
     docker_registry_username: "afwacherni123"
     docker_registry_password: "123456789"
-
+    k8s_namespace: jenkins
+  
   tasks:
-
     - name: Log in to Docker Hub
       community.general.docker_login:
         username: "{{ docker_registry_username }}"
         password: "{{ docker_registry_password }}"
-        reauthorize: yes  # Re-authenticate even if credentials exist
+        reauthorize: yes
 
     - name: Build Docker image
       community.general.docker_image:
@@ -34,22 +33,31 @@
         push: yes
         source: local
 
-    - name: Pull Docker image (optional, for verification or on target nodes)
+    - name: Pull Docker image (optional, for verification)
       community.general.docker_image:
         name: "{{ docker_registry_username }}/{{ image_name }}"
         tag: "{{ image_tag }}"
         source: pull
 
+    # CREATE NAMESPACE FIRST - This fixes your error
+    - name: Create Kubernetes namespace if it doesn't exist
+      kubernetes.core.k8s:
+        name: "{{ k8s_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: config
+
     - name: Apply Kubernetes Deployment
       kubernetes.core.k8s:
         state: present
-        namespace: jenkins
+        namespace: "{{ k8s_namespace }}"
         src: my-deployment.yaml
-        kubeconfig: config  # Path to your kubeconfig file
+        kubeconfig: config
 
     - name: Apply Kubernetes Service
       kubernetes.core.k8s:
         state: present
-        namespace: jenkins
+        namespace: "{{ k8s_namespace }}"
         src: service.yaml
         kubeconfig: config
