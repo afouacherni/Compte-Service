@@ -2,61 +2,46 @@ pipeline {
     agent any
 
     tools {
-        maven 'myMaven' // Nom Maven défini dans Jenkins > Manage Jenkins > Tools
-    }
-
-    environment {
-        DEPLOY_PATH = "/opt/tomcat/webapps"      // chemin du Tomcat
-        WAR_NAME = "compte-service.war"          // nom final du fichier
+        maven 'Maven'   // Nom de l'installation Maven configurée dans Jenkins
     }
 
     stages {
+
         stage('Checkout code') {
             steps {
                 git branch: 'main', url: 'https://github.com/afouacherni/Compte-Service.git'
             }
         }
 
-        stage('Compile code') {
+        stage('Build Maven') {
             steps {
-                sh 'mvn clean compile'
+                sh 'mvn clean install'
             }
         }
 
-        stage('Test code') {
+        stage('Deploy using Ansible playbook') {
             steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                script {
+                    // Exécution du playbook Ansible
+                    // Remplace playbookCICD.yml par le nom réel de ton playbook
+                    sh 'ansible-playbook -i hosts playbookCICD.yml'
                 }
-            }
-        }
-
-        stage('Package code') {
-            steps {
-                sh 'mvn package -DskipTests'
-            }
-        }
-
-        stage('Deploy to Tomcat') {
-            steps {
-                echo '🚀 Déploiement du WAR sur Apache Tomcat...'
-                sh '''
-                    sudo cp target/*.war $DEPLOY_PATH/$WAR_NAME
-                    sudo systemctl restart tomcat
-                '''
             }
         }
     }
 
     post {
-        success {
-            echo "✅ Pipeline réussi et déployé sur Tomcat !"
+        always {
+            // Nettoyage du workspace Jenkins après le build
+            cleanWs()
         }
+
+        success {
+            echo '✅ Ansible playbook executed successfully!'
+        }
+
         failure {
-            echo "❌ Le pipeline a échoué !"
+            echo '❌ Ansible playbook execution failed!'
         }
     }
 }
