@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-compte-service-monitor
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: compte-service
+  endpoints:
+    - port: "http"
+      path: /actuator/prometheus
+      interval: 15s
+      scheme: http
+  namespaceSelector:
+    any: true
+
+# NOTE: This resource requires the Prometheus Operator (prometheus-operator) to be
+# installed in the cluster. If you don't use the operator, rely on the Service
+# annotations (already added to `service.yaml`) and configure your Prometheus
+# scrape config accordingly.

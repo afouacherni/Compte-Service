@@ -1,0 +1,37 @@
+# Configuration Prometheus pour le micro-service Compte
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'compte-service-monitor'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alert_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus lui-même
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9091']
+
+  # Micro-service Compte-Service
+  - job_name: 'compte-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['localhost:8082']
+        labels:
+          application: 'compte-service'
+          environment: 'production'
+
+  # Ajouter d'autres services si nécessaire
+  # - job_name: 'autre-service'
+  #   static_configs:
+  #     - targets: ['localhost:8083']
