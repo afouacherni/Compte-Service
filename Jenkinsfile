@@ -111,17 +111,30 @@ pipeline {
             }
         }
 
-        stage('Deploy to Tomcat') {
+        stage('Deploy with Docker') {
             when {
                 expression { return !env.DOCKER_REGISTRY?.trim() }
             }
             steps {
-                echo '🚀 Déploiement du WAR sur Apache Tomcat...'
-                sh '''
-                    sudo cp target/*.war $DEPLOY_PATH/$WAR_NAME
-                    sudo systemctl restart tomcat
-                '''
-                echo '✓ Application déployée sur Tomcat'
+                echo '🐳 Déploiement de l\'application via Docker...'
+                script {
+                    // Arrêter et supprimer l'ancien conteneur s'il existe
+                    sh '''
+                        docker stop compte-service-container || true
+                        docker rm compte-service-container || true
+                    '''
+                    
+                    // Lancer le nouveau conteneur
+                    def imageName = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                    sh """
+                        docker run -d \
+                            --name compte-service-container \
+                            -p 8082:8082 \
+                            --restart unless-stopped \
+                            ${imageName}
+                    """
+                    echo '✓ Application déployée dans Docker'
+                }
             }
         }
 
