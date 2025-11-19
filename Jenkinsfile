@@ -2,9 +2,6 @@ pipeline {
     agent any
 
     tools {
-<<<<<<< Updated upstream
-        maven 'Maven'   // Nom de l'installation Maven configurée dans Jenkins
-=======
         maven 'myMaven' // Nom Maven défini dans Jenkins > Manage Jenkins > Tools
     }
 
@@ -19,7 +16,6 @@ pipeline {
         PROMETHEUS_URL = "http://localhost:9091"
         GRAFANA_URL = "http://localhost:3000"
         APP_URL = "http://localhost:8082"
->>>>>>> Stashed changes
     }
 
     stages {
@@ -31,29 +27,8 @@ pipeline {
             }
         }
 
-        stage('Build Maven') {
+        stage('Compile code') {
             steps {
-<<<<<<< Updated upstream
-                sh 'mvn clean install'
-            }
-        }
-
-        stage('Deploy using Ansible playbook') {
-            steps {
-                script {
-                    // Exécution du playbook Ansible
-                    // Remplace playbookCICD.yml par le nom réel de ton playbook
-                    sh 'ansible-playbook -i hosts playbookCICD.yml'
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            // Nettoyage du workspace Jenkins après le build
-            cleanWs()
-=======
                 echo '⚙️ Compilation du code...'
                 sh 'mvn clean compile'
             }
@@ -225,17 +200,9 @@ pipeline {
             ║ 📚 Swagger: ${env.APP_URL}/swagger-ui.html            ║
             ╚════════════════════════════════════════════════════════╝
             """
->>>>>>> Stashed changes
-        }
-
-        success {
-            echo '✅ Ansible playbook executed successfully!'
         }
 
         failure {
-<<<<<<< Updated upstream
-            echo '❌ Ansible playbook execution failed!'
-=======
             echo """
             ╔════════════════════════════════════════════════════════╗
             ║           ❌ LE PIPELINE A ÉCHOUÉ !                    ║
@@ -247,7 +214,6 @@ pipeline {
         always {
             echo '🧹 Nettoyage des ressources temporaires...'
             cleanWs(deleteDirs: true, patterns: [[pattern: 'target/**', type: 'INCLUDE']])
->>>>>>> Stashed changes
         }
     }
 }
