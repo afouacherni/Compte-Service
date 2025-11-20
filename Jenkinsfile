@@ -82,6 +82,31 @@ pipeline {
             }
         }
 
+        stage('Docker Login') {
+            when {
+                expression { return env.DOCKER_REGISTRY?.trim() }
+            }
+            steps {
+                echo '🔐 Connexion à Docker Hub...'
+                script {
+                    // Option 1: Avec credentials Jenkins (recommandé)
+                    try {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+                            sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                        }
+                    } catch (Exception e) {
+                        // Option 2: Fallback - login manuel si credentials pas configurés
+                        echo '⚠️ Credentials Jenkins non trouvés, tentative login sans credentials...'
+                        sh 'docker login || echo "Login failed, continuing anyway..."'
+                    }
+                }
+            }
+        }
+
         stage('Push Docker Image') {
             when {
                 expression { return env.DOCKER_REGISTRY?.trim() }
@@ -91,8 +116,14 @@ pipeline {
                 script {
                     def fullImage = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
                     def latestTag = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:latest"
-                    sh "docker push ${fullImage}"
-                    sh "docker push ${latestTag}"
+                    
+                    // Retry en cas d'échec réseau
+                    retry(3) {
+                        sh "docker push ${fullImage}"
+                    }
+                    retry(3) {
+                        sh "docker push ${latestTag}"
+                    }
                     echo "✓ Images poussées: ${fullImage} et ${latestTag}"
                 }
             }
