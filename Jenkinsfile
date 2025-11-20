@@ -9,7 +9,7 @@ pipeline {
         DEPLOY_PATH = "/opt/tomcat/webapps"      // chemin du Tomcat
         WAR_NAME = "compte-service.war"          // nom final du fichier
         // Variables pour Docker/Kubernetes
-        DOCKER_REGISTRY = "" // ex: myregistry.io/namespace
+        DOCKER_REGISTRY = "docker.io/afwacherni123"
         IMAGE_NAME = "my-compte-service"
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         // Variables pour Prometheus et Grafana
@@ -104,10 +104,23 @@ pipeline {
             }
             steps {
                 echo '☸️ Déploiement sur Kubernetes...'
+                // Créer le namespace monitoring s'il n'existe pas
+                sh 'kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -'
+                
+                // Déployer Prometheus et sa configuration
+                sh 'kubectl apply -f k8s/prometheus-configmap.yaml'
+                sh 'kubectl apply -f k8s/prometheus-deployment.yaml'
+                
+                // Déployer l'application
                 sh 'kubectl apply -f my-deployment.yaml'
                 sh 'kubectl apply -f service.yaml'
                 sh 'kubectl apply -f k8s/servicemonitor.yaml'
-                echo '✓ Application déployée sur Kubernetes'
+                
+                // Attendre que les pods soient prêts
+                sh 'kubectl rollout status deployment/my-compte-service --timeout=300s'
+                sh 'kubectl rollout status deployment/prometheus -n monitoring --timeout=300s'
+                
+                echo '✓ Application et monitoring déployés sur Kubernetes'
             }
         }
 
@@ -142,9 +155,19 @@ pipeline {
             steps {
                 echo '🏥 Vérification de la santé de l\'application...'
                 script {
-                    retry(5) {
-                        sleep time: 10, unit: 'SECONDS'
-                        sh "curl -f ${env.APP_URL}/actuator/health || exit 1"
+                    if (env.DOCKER_REGISTRY?.trim()) {
+                        // Pour Kubernetes, utiliser kubectl
+                        retry(5) {
+                            sleep time: 10, unit: 'SECONDS'
+                            sh 'kubectl get pods -l app=compte-service'
+                            sh 'kubectl exec -it $(kubectl get pod -l app=compte-service -o jsonpath="{.items[0].metadata.name}") -- curl -f http://localhost:8082/actuator/health || exit 1'
+                        }
+                    } else {
+                        // Pour Docker local
+                        retry(5) {
+                            sleep time: 10, unit: 'SECONDS'
+                            sh "curl -f ${env.APP_URL}/actuator/health || exit 1"
+                        }
                     }
                     echo '✓ L\'application est en bonne santé'
                 }

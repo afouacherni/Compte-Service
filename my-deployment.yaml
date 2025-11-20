@@ -11,9 +11,25 @@ spec:
     metadata:
       labels:
         app: compte-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/actuator/prometheus"
     spec:
       containers:
-        - name: country-service-container
-          image: my-compte-service:v1
+        - name: compte-service-container
+          image: my-compte-service:latest
           ports:
             - containerPort: 8082
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 20
+            periodSeconds: 5

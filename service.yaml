@@ -1,7 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: my-compte-service
+  name: compte-service
+  labels:
+    app: compte-service
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/path: "/actuator/prometheus"
@@ -14,5 +16,5 @@ spec:
     - port: 8082
       name: http
       targetPort: 8082
-      #nodePort: 30007
+      nodePort: 30082
       protocol: TCP
