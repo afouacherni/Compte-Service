@@ -70,7 +70,6 @@ pipeline {
                     // Déployer l'application (3 pods avec annotations Prometheus)
                     sh 'kubectl apply -f my-deployment.yaml'
                     sh 'kubectl apply -f service.yaml'
-                    sh 'kubectl apply -f k8s/servicemonitor.yaml'
                     
                     // Attendre que les déploiements soient prêts
                     sh 'kubectl rollout status deployment/my-compte-service --timeout=300s || true'
