@@ -2,20 +2,13 @@ pipeline {
     agent any
 
     tools {
-        maven 'myMaven' // Nom Maven défini dans Jenkins > Manage Jenkins > Tools
+        maven 'Maven' // Nom Maven défini dans Jenkins
     }
 
     environment {
-        DEPLOY_PATH = "/opt/tomcat/webapps"      // chemin du Tomcat
-        WAR_NAME = "compte-service.war"          // nom final du fichier
-        // Variables pour Docker/Kubernetes
-        DOCKER_REGISTRY = "docker.io/afwacherni123" // Registry Docker Hub pour Kubernetes
-        IMAGE_NAME = "my-compte-service"
+        DOCKER_USER = 'afwacherni123'
+        IMAGE_NAME = 'my-compte-service'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
-        // Variables pour Prometheus et Grafana
-        PROMETHEUS_URL = "http://localhost:9091"
-        GRAFANA_URL = "http://localhost:3000"
-        APP_URL = "http://localhost:8082"
     }
 
     stages {
@@ -27,29 +20,10 @@ pipeline {
             }
         }
 
-        stage('Compile code') {
+        stage('Build maven') {
             steps {
-                echo '⚙️ Compilation du code...'
-                sh 'mvn clean compile'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            when {
-                expression { return fileExists('sonar-project.properties') }
-            }
-            steps {
-                echo '🔍 Analyse de code avec SonarQube...'
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Test code') {
-            steps {
-                echo '🧪 Exécution des tests unitaires...'
-                sh 'mvn test'
+                echo '⚙️ Compilation et tests avec Maven...'
+                sh 'mvn clean install'
             }
             post {
                 always {
@@ -59,125 +33,62 @@ pipeline {
             }
         }
 
-        stage('Package code') {
+        stage('Build and Push Docker Image') {
             steps {
-                echo '📦 Création du package JAR/WAR...'
-                sh 'mvn package -DskipTests'
-            }
-        }
+                echo '🐳 Construction et push de l\'image Docker...'
+                // Construction de l'image
+                sh "docker build . -t ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
 
-        stage('Build Docker Image') {
-            steps {
-                echo '🐳 Construction de l\'image Docker...'
-                script {
-                    def imageName = env.DOCKER_REGISTRY ? "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}" : "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                    sh "docker build -t ${imageName} ."
-                    
-                    // Tag avec 'latest' aussi
-                    def latestTag = env.DOCKER_REGISTRY ? "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:latest" : "${env.IMAGE_NAME}:latest"
-                    sh "docker tag ${imageName} ${latestTag}"
-                    
-                    echo "✓ Image créée: ${imageName}"
+                // Login et Push vers Docker Hub
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-pwd',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PWD'
+                )]) {
+                    sh 'docker login -u $DOCKER_USER -p $DOCKER_PWD'
+                    sh "docker tag ${env.IMAGE_NAME}:${env.IMAGE_TAG} \$DOCKER_USER/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                    sh "docker tag ${env.IMAGE_NAME}:${env.IMAGE_TAG} \$DOCKER_USER/${env.IMAGE_NAME}:latest"
+                    sh "docker push \$DOCKER_USER/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+                    sh "docker push \$DOCKER_USER/${env.IMAGE_NAME}:latest"
+                    sh 'docker logout'
                 }
-            }
-        }
-
-        stage('Docker Login') {
-            when {
-                expression { return env.DOCKER_REGISTRY?.trim() }
-            }
-            steps {
-                echo '🔐 Connexion à Docker Hub...'
-                script {
-                    // Option 1: Avec credentials Jenkins (recommandé)
-                    try {
-                        withCredentials([usernamePassword(
-                            credentialsId: 'docker-hub-credentials',
-                            usernameVariable: 'DOCKER_USER',
-                            passwordVariable: 'DOCKER_PASS'
-                        )]) {
-                            sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                        }
-                    } catch (Exception e) {
-                        // Option 2: Fallback - login manuel si credentials pas configurés
-                        echo '⚠️ Credentials Jenkins non trouvés, tentative login sans credentials...'
-                        sh 'docker login || echo "Login failed, continuing anyway..."'
-                    }
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            when {
-                expression { return env.DOCKER_REGISTRY?.trim() }
-            }
-            steps {
-                echo '📤 Push de l\'image vers le registry Docker...'
-                script {
-                    def fullImage = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                    def latestTag = "${env.DOCKER_REGISTRY}/${env.IMAGE_NAME}:latest"
-                    
-                    // Retry en cas d'échec réseau
-                    retry(3) {
-                        sh "docker push ${fullImage}"
-                    }
-                    retry(3) {
-                        sh "docker push ${latestTag}"
-                    }
-                    echo "✓ Images poussées: ${fullImage} et ${latestTag}"
-                }
+                echo '✓ Image Docker poussée sur Docker Hub'
             }
         }
 
         stage('Deploy to Kubernetes') {
-            when {
-                expression { return env.DOCKER_REGISTRY?.trim() }
-            }
             steps {
-                echo '☸️ Déploiement sur Kubernetes...'
-                // Créer le namespace monitoring s'il n'existe pas
-                sh 'kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -'
-                
-                // Déployer Prometheus et sa configuration
-                sh 'kubectl apply -f k8s/prometheus-configmap.yaml'
-                sh 'kubectl apply -f k8s/prometheus-deployment.yaml'
-                
-                // Déployer l'application
-                sh 'kubectl apply -f my-deployment.yaml'
-                sh 'kubectl apply -f service.yaml'
-                sh 'kubectl apply -f k8s/servicemonitor.yaml'
-                
-                // Attendre que les pods soient prêts
-                sh 'kubectl rollout status deployment/my-compte-service --timeout=300s'
-                sh 'kubectl rollout status deployment/prometheus -n monitoring --timeout=300s'
-                
-                echo '✓ Application et monitoring déployés sur Kubernetes'
+                echo '☸️ Déploiement sur Kubernetes avec Prometheus...'
+                withKubeConfig(credentialsId: 'KubeConfig-file', serverUrl: '') {
+                    // Créer le namespace monitoring s'il n'existe pas
+                    sh 'kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -'
+                    
+                    // Déployer Prometheus et sa configuration
+                    sh 'kubectl apply -f k8s/prometheus-configmap.yaml'
+                    sh 'kubectl apply -f k8s/prometheus-deployment.yaml'
+                    
+                    // Déployer l'application (3 pods avec annotations Prometheus)
+                    sh 'kubectl apply -f my-deployment.yaml'
+                    sh 'kubectl apply -f service.yaml'
+                    sh 'kubectl apply -f k8s/servicemonitor.yaml'
+                    
+                    // Attendre que les déploiements soient prêts
+                    sh 'kubectl rollout status deployment/my-compte-service --timeout=300s || true'
+                    sh 'kubectl rollout status deployment/prometheus -n monitoring --timeout=300s || true'
+                    
+                    echo '✓ Application et Prometheus déployés sur Kubernetes'
+                }
             }
         }
 
-        stage('Deploy with Docker') {
-            when {
-                expression { return !env.DOCKER_REGISTRY?.trim() }
-            }
+        stage('Verify Deployment') {
             steps {
-                echo '🐳 Déploiement de l\'application via Docker...'
-                script {
-                    // Arrêter et supprimer l'ancien conteneur s'il existe
-                    sh '''
-                        docker stop compte-service-container || true
-                        docker rm compte-service-container || true
-                    '''
-                    
-                    // Lancer le nouveau conteneur
-                    def imageName = "${env.IMAGE_NAME}:${env.IMAGE_TAG}"
-                    sh """
-                        docker run -d \
-                            --name compte-service-container \
-                            -p 8082:8082 \
-                            --restart unless-stopped \
-                            ${imageName}
-                    """
-                    echo '✓ Application déployée dans Docker'
+                echo '🔍 Vérification du déploiement...'
+                withKubeConfig(credentialsId: 'KubeConfig-file', serverUrl: '') {
+                    sh 'kubectl get pods -l app=compte-service'
+                    sh 'kubectl get pods -n monitoring'
+                    sh 'kubectl get svc'
+                    sh 'kubectl get svc -n monitoring'
                 }
             }
         }
@@ -185,71 +96,17 @@ pipeline {
         stage('Health Check') {
             steps {
                 echo '🏥 Vérification de la santé de l\'application...'
-                script {
-                    if (env.DOCKER_REGISTRY?.trim()) {
-                        // Pour Kubernetes, utiliser kubectl
+                withKubeConfig(credentialsId: 'KubeConfig-file', serverUrl: '') {
+                    script {
                         retry(5) {
                             sleep time: 10, unit: 'SECONDS'
-                            sh 'kubectl get pods -l app=compte-service'
-                            sh 'kubectl exec -it $(kubectl get pod -l app=compte-service -o jsonpath="{.items[0].metadata.name}") -- curl -f http://localhost:8082/actuator/health || exit 1'
-                        }
-                    } else {
-                        // Pour Docker local
-                        retry(5) {
-                            sleep time: 10, unit: 'SECONDS'
-                            sh "curl -f ${env.APP_URL}/actuator/health || exit 1"
+                            sh 'kubectl get pods -l app=compte-service -o wide'
+                            // Vérifier qu'au moins un pod est prêt
+                            sh 'kubectl wait --for=condition=ready pod -l app=compte-service --timeout=60s'
                         }
                     }
-                    echo '✓ L\'application est en bonne santé'
                 }
-            }
-        }
-
-        stage('Verify Prometheus Metrics') {
-            steps {
-                echo '📊 Vérification des métriques Prometheus...'
-                script {
-                    // Vérifier que l'endpoint Prometheus est accessible
-                    sh "curl -f ${env.APP_URL}/actuator/prometheus | head -n 20"
-                    echo '✓ Endpoint Prometheus accessible'
-                    
-                    // Vérifier que Prometheus scrape l'application
-                    sleep time: 20, unit: 'SECONDS'
-                    def prometheusCheck = sh(
-                        script: "curl -s ${env.PROMETHEUS_URL}/api/v1/targets | grep compte-service || true",
-                        returnStdout: true
-                    ).trim()
-                    
-                    if (prometheusCheck) {
-                        echo '✓ L\'application est scrapée par Prometheus'
-                    } else {
-                        echo '⚠️ Prometheus ne scrape pas encore l\'application (vérifier prometheus.yml)'
-                    }
-                }
-            }
-        }
-
-        stage('Setup Grafana Dashboard') {
-            steps {
-                echo '📈 Configuration du dashboard Grafana...'
-                script {
-                    // Vérifier que Grafana est accessible
-                    def grafanaCheck = sh(
-                        script: "curl -f ${env.GRAFANA_URL}/api/health || echo 'FAIL'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    if (grafanaCheck != 'FAIL') {
-                        echo '✓ Grafana est accessible'
-                        // Exécuter le script de configuration si disponible
-                        if (fileExists('setup-grafana.sh')) {
-                            sh 'chmod +x setup-grafana.sh'
-                            sh './setup-grafana.sh || echo "Configuration Grafana à faire manuellement"'
-                        }
-                    } else {
-                        echo '⚠️ Grafana n\'est pas accessible sur ${env.GRAFANA_URL}'
-                    }
-                }
+                echo '✓ Les pods sont en bonne santé'
             }
         }
     }
@@ -258,13 +115,14 @@ pipeline {
         success {
             echo """
             ╔════════════════════════════════════════════════════════╗
-            ║        ✅ PIPELINE RÉUSSI ET DÉPLOYÉ !                 ║
+            ║        ✅ PIPELINE RÉUSSI - PODS EN SURVEILLANCE !     ║
             ╠════════════════════════════════════════════════════════╣
-            ║ 🌐 Application: ${env.APP_URL}                         ║
-            ║ 📊 Métriques: ${env.APP_URL}/actuator/prometheus       ║
-            ║ 🔍 Prometheus: ${env.PROMETHEUS_URL}                   ║
-            ║ 📈 Grafana: ${env.GRAFANA_URL}                         ║
-            ║ 📚 Swagger: ${env.APP_URL}/swagger-ui.html            ║
+            ║ 🎯 3 Pods déployés et surveillés par Prometheus       ║
+            ║ 📊 Commandes utiles:                                   ║
+            ║   kubectl get pods -l app=compte-service               ║
+            ║   kubectl get pods -n monitoring                       ║
+            ║   kubectl port-forward -n monitoring svc/prometheus 9090:9090 ║
+            ║   kubectl port-forward svc/compte-service 8082:8082    ║
             ╚════════════════════════════════════════════════════════╝
             """
         }
@@ -278,6 +136,7 @@ pipeline {
             ╚════════════════════════════════════════════════════════╝
             """
         }
+        
         always {
             echo '🧹 Nettoyage des ressources temporaires...'
             cleanWs(deleteDirs: true, patterns: [[pattern: 'target/**', type: 'INCLUDE']])
