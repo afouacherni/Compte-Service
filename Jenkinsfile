@@ -9,8 +9,7 @@ pipeline {
         DEPLOY_PATH = "/opt/tomcat/webapps"      // chemin du Tomcat
         WAR_NAME = "compte-service.war"          // nom final du fichier
         // Variables pour Docker/Kubernetes
-        // IMPORTANT: Laissez vide pour déploiement Docker local, ou mettez votre registry pour Kubernetes
-        DOCKER_REGISTRY = "" // Vide = Docker local | "docker.io/afwacherni123" = Kubernetes
+        DOCKER_REGISTRY = "docker.io/afwacherni123" // Registry Docker Hub pour Kubernetes
         IMAGE_NAME = "my-compte-service"
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         // Variables pour Prometheus et Grafana
